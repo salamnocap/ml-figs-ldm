@@ -1,0 +1,74 @@
+model:
+  base_learning_rate: 4.5e-06
+  target: ldm.models.autoencoder.AutoencoderKLCustom
+  params:
+    monitor: val/rec_loss
+    embed_dim: 4
+    lossconfig:
+      target: ldm.modules.losses.LPIPSWithDiscriminatorTPL
+      params:
+        disc_start: 50001
+        kl_weight: 1.0e-06
+        disc_weight: 0.5
+        perceptual_weight: 0.2
+        text_perceptual_weight: 0.3
+    ddconfig:
+      double_z: true
+      z_channels: 4
+      resolution: 256
+      in_channels: 3
+      out_ch: 3
+      ch: 128
+      ch_mult:
+      - 1
+      - 2
+      - 4
+      - 4
+      num_res_blocks: 2
+      attn_resolutions: []
+      dropout: 0.0
+
+data:
+  target: main.DataModuleFromConfig
+  params:
+    batch_size: 1
+    num_workers: 2
+    wrap: false
+    train:
+      target: ldm.data.ml_figs.MlFigsTrain
+      params:
+        json_file: ml-figs/mlfigs_train.json
+        size: 384
+        random_crop: false
+        square_pad: True
+        use_roi_bboxes: True
+    validation:
+      target: ldm.data.ml_figs.MlFigsValidation
+      params:
+        json_file: ml-figs/mlfigs_test.json
+        size: 384
+        random_crop: false
+        square_pad: True
+        use_roi_bboxes: True
+    test:
+      target: ldm.data.ml_figs.MlFigsValidation
+      params:
+        json_file: ml-figs/mlfigs_test.json
+        size: 384
+        random_crop: false
+        square_pad: True
+        use_roi_bboxes: True
+
+lightning:
+  callbacks:
+    image_logger:
+      target: main.ImageLogger
+      params:
+        batch_frequency: 100
+        max_images: 4
+        increase_log_steps: false
+  trainer:
+    accumulate_grad_batches: 1
+    benchmark: true
+    accelerator: gpu
+    gpus: 0,
