@@ -1,4 +1,3 @@
-import os
 import json
 import PIL
 import cv2
@@ -36,7 +35,7 @@ def visualize_ocr(
 
         image = data['image']
         if isinstance(image, torch.Tensor):
-            image = tf.ToPILImage()(image)
+            image = transforms.ToPILImage()(image)
 
         ax.imshow(image, cmap="gray")
 
@@ -183,7 +182,7 @@ class MlFigs(Dataset):
         
         image = sample['image']
         if isinstance(image, torch.Tensor):
-            image = tf.ToPILImage()(image)
+            image = transforms.ToPILImage()(image)
 
         fig, ax = plt.subplots(1)
         ax.imshow(image)
@@ -204,7 +203,7 @@ class MlFigs(Dataset):
         
         image = sample['image']
         if isinstance(image, torch.Tensor):
-            image = tf.ToPILImage()(image)
+            image = transforms.ToPILImage()(image)
 
         fig, ax = plt.subplots(1)
         ax.imshow(image)

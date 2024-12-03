@@ -103,5 +103,5 @@ lightning:
   trainer:
     accumulate_grad_batches: 1
     benchmark: true
-    accelerator: cpu
+    accelerator: gpu
     gpus: 0,
