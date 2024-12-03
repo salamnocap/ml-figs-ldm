@@ -11,7 +11,6 @@ from omegaconf import OmegaConf
 from torch.utils.data import random_split, DataLoader, Dataset, Subset
 from functools import partial
 from PIL import Image
-from haven import haven_utils as hu
 
 from pytorch_lightning import seed_everything
 from pytorch_lightning.trainer import Trainer
@@ -515,9 +514,7 @@ if __name__ == "__main__":
             name = "_" + cfg_name
         else:
             name = ""
-        configs = [OmegaConf.load(cfg) for cfg in opt.base]
-        exp_id = hu.hash_dict(dict(configs[0]))
-        nowname = exp_id + name + opt.postfix
+        nowname = now + name + opt.postfix
         logdir = os.path.join(opt.logdir, nowname)
 
     ckptdir = os.path.join(logdir, "checkpoints")
