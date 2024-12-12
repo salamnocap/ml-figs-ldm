@@ -1,21 +1,28 @@
 # ML-FIGS-LDM
 
 Create a conda environment
-
-```
+```bash
 conda env create -f environment.yaml
 conda activate ml-figs-ldm
 pip install -e .
 ```
 
-To train the ldm from scratch, run the following command:
-
+Update albumentations package 
+```bash 
+python scripts/update_albm_package.py
 ```
+
+Train LDM:
+```bash
 python main.py --config configs/ml-figs-ldm.yaml --train=True
 ```
 
-Update albumentations package 
+Train VAE:
+```bash
+python main.py --config configs/ml-figs-vae.yaml --train=True
+```
 
-``` 
-python scripts/update_albm_package.py
+Evaluate VAE:
+```bash
+python main.py scripts/eval_vae.py
 ```

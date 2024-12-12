@@ -11,7 +11,7 @@ model:
         kl_weight: 1.0e-06
         disc_weight: 0.5
         perceptual_weight: 0.2
-        text_perceptual_weight: 0.3
+        text_perceptual_weight: 1.0
     ddconfig:
       double_z: true
       z_channels: 4
@@ -31,9 +31,8 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 2
+    batch_size: 4
     num_workers: 2
-    wrap: false
     train:
       target: ldm.data.ml_figs.MlFigsTrain
       params:
@@ -70,5 +69,5 @@ lightning:
   trainer:
     accumulate_grad_batches: 1
     benchmark: true
-    accelerator: gpu
+    accelerator: ddp
     gpus: 0,

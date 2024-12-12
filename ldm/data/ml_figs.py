@@ -20,10 +20,13 @@ def visualize_ocr(
     cols: int = 3, 
     figsize: tuple = (15, 15), 
     max_caption_length: int = 40,
-    facecolor: bool = False
+    ocr_facecolor: bool = False,
+    ocr_edgecolor: bool = False,
+    edgecolor: str = "gray",
+    linewidth: float = 2.0
 ):
-    fig, axs = plt.subplots(nrows=rows, ncols=cols, figsize=figsize)
-    fig.subplots_adjust(hspace=0.4, wspace=0.2)
+    fig, axs = plt.subplots(nrows=rows, ncols=cols, figsize=figsize, facecolor='white')
+    fig.subplots_adjust(hspace=0.1, wspace=0.1)
     axs = axs.flatten()
 
     batch = next(iter(dataloader))
@@ -41,18 +44,28 @@ def visualize_ocr(
 
         for l, t, w, h in data['bboxes']:
             rect = patches.Rectangle(
-                (l, t), w - l, h - t, 
-                linewidth=1, edgecolor='r', 
-                facecolor='blue' if facecolor else 'none'
+                (l, t), w, h, 
+                linewidth=1, 
+                edgecolor='r' if ocr_edgecolor else 'none', 
+                 facecolor='blue' if ocr_facecolor else 'none'
             )
             ax.add_patch(rect)
-        ax.axis("off")
 
         caption = data['caption']
         ax.set_title(
             caption[:max_caption_length] + '...' if len(caption) > max_caption_length else caption, 
             fontsize=12, color="black"
         )
+        ax.axis("off")
+
+        rect = patches.Rectangle(
+            (0, 0), 1, 1, 
+            transform=ax.transAxes,
+            linewidth=linewidth, 
+            edgecolor=edgecolor, 
+            facecolor='none'
+        )
+        ax.add_patch(rect)
 
     for ax in axs[num_samples:]:
         ax.axis("off")
