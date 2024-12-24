@@ -1,13 +1,18 @@
+import os
 import json
 import PIL
 import cv2
 import torch
+import pytesseract
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import albumentations as A
+
+from pytesseract import Output
 from torchvision import transforms
+from string import punctuation
 
 from pathlib import Path
 from PIL import Image
@@ -20,13 +25,10 @@ def visualize_ocr(
     cols: int = 3, 
     figsize: tuple = (15, 15), 
     max_caption_length: int = 40,
-    ocr_facecolor: bool = False,
-    ocr_edgecolor: bool = False,
-    edgecolor: str = "gray",
-    linewidth: float = 2.0
+    facecolor: bool = False
 ):
-    fig, axs = plt.subplots(nrows=rows, ncols=cols, figsize=figsize, facecolor='white')
-    fig.subplots_adjust(hspace=0.1, wspace=0.1)
+    fig, axs = plt.subplots(nrows=rows, ncols=cols, figsize=figsize)
+    fig.subplots_adjust(hspace=0.4, wspace=0.2)
     axs = axs.flatten()
 
     batch = next(iter(dataloader))
@@ -44,28 +46,18 @@ def visualize_ocr(
 
         for l, t, w, h in data['bboxes']:
             rect = patches.Rectangle(
-                (l, t), w, h, 
-                linewidth=1, 
-                edgecolor='r' if ocr_edgecolor else 'none', 
-                 facecolor='blue' if ocr_facecolor else 'none'
+                (l, t), w - l, h - t, 
+                linewidth=1, edgecolor='r', 
+                facecolor='blue' if facecolor else 'none'
             )
             ax.add_patch(rect)
+        ax.axis("off")
 
         caption = data['caption']
         ax.set_title(
             caption[:max_caption_length] + '...' if len(caption) > max_caption_length else caption, 
             fontsize=12, color="black"
         )
-        ax.axis("off")
-
-        rect = patches.Rectangle(
-            (0, 0), 1, 1, 
-            transform=ax.transAxes,
-            linewidth=linewidth, 
-            edgecolor=edgecolor, 
-            facecolor='none'
-        )
-        ax.add_patch(rect)
 
     for ax in axs[num_samples:]:
         ax.axis("off")
@@ -77,11 +69,8 @@ def visualize_ocr(
 class MlFigs(Dataset):
     def __init__(
         self, 
-        json_file: str, size: int = 224, random_crop=False, 
-        square_pad=False, use_roi_bboxes=False, transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ])
+        json_file: str, size: int = 224, transform=None, 
+        random_crop=False, square_pad=False, use_roi_bboxes=False
     ):
         self.json_file = json_file 
         self.size = size
@@ -128,6 +117,50 @@ class MlFigs(Dataset):
     def __len__(self):
         return len(self.data)
 
+    def _preprocessing(self, text: str) -> str:
+        text = text.lower()
+        text = ''.join([c for c in text if c not in punctuation])
+        return text
+
+    def _get_ocr_results(self, path: str) -> dict:
+        img = cv2.imread(path)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        ocr_result = pytesseract.image_to_data(img, output_type=Output.DICT)
+        
+        result = {
+            'text': [], 'left': [], 'top': [], 'width': [], 'height': [], 'conf': []
+        }
+        
+        for i in range(len(ocr_result['level'])):
+            text = ocr_result['text'][i].strip()
+            conf = int(ocr_result['conf'][i])
+    
+            if conf <= 20 or text == '':
+                continue
+
+            is_duplicate = False
+            for j in range(len(result['text'])):
+                if (result['text'][j] == text and
+                    abs(result['left'][j] - ocr_result['left'][i]) < 10 and
+                    abs(result['top'][j] - ocr_result['top'][i]) < 10):
+                    is_duplicate = True
+                    break
+            
+            text = self._preprocessing(text)
+    
+            if text == '':
+                continue
+    
+            if not is_duplicate:
+                result['text'].append(text)
+                result['left'].append(ocr_result['left'][i])
+                result['top'].append(ocr_result['top'][i])
+                result['width'].append(ocr_result['width'][i])
+                result['height'].append(ocr_result['height'][i])
+                result['conf'].append(conf)
+        
+        return result
+
     def _get_bboxes_tensor(self, ocr: dict):
         return [
             [l, t, w, h] 
@@ -147,11 +180,15 @@ class MlFigs(Dataset):
     def __getitem__(self, idx):
         sample = {}
         figure_metadata = self.data[idx]
-        ocr_data = figure_metadata['ocr']
 
         image_path = str(
             Path(self.json_file).parent.parent / figure_metadata['renderURL']
         )
+        
+        if 'ocr' in figure_metadata:
+            ocr_data = figure_metadata['ocr']
+        else:
+            ocr_data = self._get_ocr_results(image_path)
 
         if self.use_roi_bboxes:
             bboxes = self._get_bboxes_tensor(ocr_data)

@@ -4,7 +4,6 @@ import time
 import torch
 import torchvision
 import pytorch_lightning as pl
-import wandb
 
 from packaging import version
 from omegaconf import OmegaConf
@@ -298,7 +297,6 @@ class ImageLogger(Callback):
         self.batch_freq = batch_frequency
         self.max_images = max_images
         self.logger_log_images = {
-            pl.loggers.WandbLogger: self._wandb,
             pl.loggers.TestTubeLogger: self._testtube,
         }
         self.log_steps = [2 ** n for n in range(int(np.log2(self.batch_freq)) + 1)]
@@ -320,14 +318,6 @@ class ImageLogger(Callback):
             pl_module.logger.experiment.add_image(
                 tag, grid,
                 global_step=pl_module.global_step)
-    
-    @rank_zero_only
-    def _wandb(self, pl_module, images, batch_idx, split):
-        grids = dict()
-        for k in images:
-            grid = torchvision.utils.make_grid(images[k])
-            grids[f"{split}/{k}"] = wandb.Image(grid)
-        pl_module.logger.experiment.log(grids)
 
     @rank_zero_only
     def log_local(self, save_dir, split, images,
@@ -521,10 +511,6 @@ if __name__ == "__main__":
     cfgdir = os.path.join(logdir, "configs")
     seed_everything(opt.seed)
 
-    if not opt.resume and os.path.exists(os.path.join(ckptdir, 'last.ckpt')):
-        opt.resume_from_checkpoint = os.path.join(ckptdir, 'last.ckpt')
-        opt.resume = True
-
     try:
         # init and save configs
         configs = [OmegaConf.load(cfg) for cfg in opt.base]
@@ -558,10 +544,10 @@ if __name__ == "__main__":
             "wandb": {
                 "target": "pytorch_lightning.loggers.WandbLogger",
                 "params": {
-                    "project":opt.project,
-                    "save_dir": opt.logdir,
+                    "name": nowname,
+                    "save_dir": logdir,
                     "offline": opt.debug,
-                    "config": dict(config)
+                    "id": nowname,
                 }
             },
             "testtube": {
@@ -572,7 +558,7 @@ if __name__ == "__main__":
                 }
             },
         }
-        default_logger_cfg = default_logger_cfgs["wandb"]
+        default_logger_cfg = default_logger_cfgs["testtube"]
         if "logger" in lightning_config:
             logger_cfg = lightning_config.logger
         else:

@@ -53,6 +53,7 @@ def save_samples(dataloader: DataLoader, vae_custom: AutoencoderKLCustom, vae_pr
 
 
 if __name__ == "__main__":
+    # Define models
     vae_custom = AutoencoderKLCustom(
         ddconfig={
             "double_z": True,
@@ -75,6 +76,7 @@ if __name__ == "__main__":
 
     vae_pretrained = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae").eval()
 
+    # Define dataset
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
@@ -88,4 +90,4 @@ if __name__ == "__main__":
     )
 
     # Save samples
-    save_samples(test_dataloader, vae_custom, vae_pretrained, output_dir="sample_outputs")
+    save_samples(test_dataloader, vae_custom, vae_pretrained, output_dir="sample_outputs_10")

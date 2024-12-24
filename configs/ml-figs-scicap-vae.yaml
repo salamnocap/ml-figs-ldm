@@ -36,7 +36,7 @@ data:
     train:
       target: ldm.data.ml_figs.MlFigsTrain
       params:
-        json_file: ml-figs/mlfigs_train.json
+        json_file: ml-scicap-figs/train.json
         size: 384
         random_crop: false
         square_pad: True
@@ -44,7 +44,7 @@ data:
     validation:
       target: ldm.data.ml_figs.MlFigsValidation
       params:
-        json_file: ml-figs/mlfigs_test.json
+        json_file:  ml-scicap-figs/test.json
         size: 384
         random_crop: false
         square_pad: True
@@ -52,7 +52,7 @@ data:
     test:
       target: ldm.data.ml_figs.MlFigsValidation
       params:
-        json_file: ml-figs/mlfigs_test.json
+        json_file: ml-scicap-figs/test.json
         size: 384
         random_crop: false
         square_pad: True
