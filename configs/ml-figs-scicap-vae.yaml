@@ -70,4 +70,5 @@ lightning:
     accumulate_grad_batches: 1
     benchmark: true
     accelerator: ddp
+    max_epochs: 100
     gpus: 0,
