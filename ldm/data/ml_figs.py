@@ -69,7 +69,7 @@ def visualize_ocr(
 class MlFigs(Dataset):
     def __init__(
         self, 
-        json_file: str, size: int = 224, transform=None, 
+        json_file: str, size: int = 224, transform=transforms.ToTensor(), 
         random_crop=False, square_pad=False, use_roi_bboxes=False
     ):
         self.json_file = json_file 
