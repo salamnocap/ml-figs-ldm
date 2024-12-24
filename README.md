@@ -6,15 +6,24 @@ conda env create -f environment.yaml
 conda activate ml-figs-ldm
 pip install -e .
 ```
+ or 
+```bash
+conda env update --file env.yml
+pip install -e .
+```
 
 Update albumentations package:
 ```bash 
-python scripts/update_albm_package.py
+python scripts/update_albumentations.py
 ```
 
 Train LDM (Ml-Figs):
 ```bash
 python main.py --config configs/ml-figs-ldm.yaml --train=True
+```
+or 
+```bash
+python main.py --base configs/ml-figs-ldm.yaml --train=True
 ```
 
 Train VAE (Ml-Figs):
