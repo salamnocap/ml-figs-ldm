@@ -12,11 +12,6 @@ conda env update --file env.yml
 pip install -e .
 ```
 
-Update albumentations package:
-```bash 
-python scripts/update_albumentations.py
-```
-
 Train LDM (Ml-Figs):
 ```bash
 python main.py --config configs/ml-figs-ldm.yaml --train=True
