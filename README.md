@@ -2,7 +2,7 @@
 ## EDUCATIONAL FIGURE GENERATION USING TEXT PERCEPTUAL LOSS
 
 <p align="center">
-  <img src="assets/diffusion_process.gif" alt="Diffusion" />
+  <img src="assets/diffusion_process.gif" alt="Diffusion" width="512" />
 </p>
 
 ML-FIGS-LDM is a Latent Diffusion Model (LDM) for generating educational figures. The AutoencoderKL is trained using a Text Perceptual Loss to reconstruct more readable text within the figures.
@@ -59,12 +59,12 @@ python main.py scripts/eval_vae.py
 ### Qualitative Comparison of Autoencoder Models:
 Model A trained on ML-Figs, Model B trained on ML-Figs + SciCap. TPL: Text Perceptual Loss. SD refers to Stable Diffusion v1-4 trained on LAION.
 <p align="center">
-  <img src="assets/autoencoder_results.png" alt="Qualitative Comparison" />
+  <img src="assets/autoencoder_results.png" alt="Qualitative Comparison" width="600"/>
 </p>
 
 ### Generated samples across varying classifier-free guidance (CFG) scales:
 <p align="center">
-  <img src="assets/generated_samples.png" alt="Generated Samples" />
+  <img src="assets/generated_samples.png" alt="Generated Samples" width="600" />
 </p>
 
 ## Download Models:
