@@ -7,6 +7,8 @@ from tqdm import tqdm, trange
 from einops import rearrange
 from torchvision.utils import make_grid
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
@@ -14,7 +16,7 @@ from ldm.models.diffusion.plms import PLMSSampler
 
 def load_model_from_config(config, ckpt, verbose=False):
     print(f"Loading model from {ckpt}")
-    pl_sd = torch.load(ckpt, map_location="cpu")
+    pl_sd = torch.load(ckpt, map_location="cpu", weights_only=False)
     sd = pl_sd["state_dict"]
     model = instantiate_from_config(config.model)
     m, u = model.load_state_dict(sd, strict=False)
@@ -51,7 +53,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ddim_steps",
         type=int,
-        default=200,
+        default=70,
         help="number of ddim sampling steps",
     )
 
@@ -77,35 +79,35 @@ if __name__ == "__main__":
     parser.add_argument(
         "--H",
         type=int,
-        default=256,
+        default=512,
         help="image height, in pixel space",
     )
 
     parser.add_argument(
         "--W",
         type=int,
-        default=256,
+        default=512,
         help="image width, in pixel space",
     )
 
     parser.add_argument(
         "--n_samples",
         type=int,
-        default=4,
+        default=1,
         help="how many samples to produce for the given prompt",
     )
 
     parser.add_argument(
         "--scale",
         type=float,
-        default=5.0,
+        default=3.0,
         help="unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))",
     )
     opt = parser.parse_args()
 
 
-    config = OmegaConf.load("configs/latent-diffusion/txt2img-1p4B-eval.yaml")  # TODO: Optionally download from same location as ckpt and chnage this logic
-    model = load_model_from_config(config, "models/ldm/text2img-large/model.ckpt")  # TODO: check path
+    config = OmegaConf.load("configs/ml-figs-scicap-ldm-new.yaml")  # TODO: Optionally download from same location as ckpt and chnage this logic
+    model = load_model_from_config(config, "logs/2025-04-03T12-44-09_ml-figs-scicap-ldm-new/checkpoints/last.ckpt")  # TODO: check path
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)

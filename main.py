@@ -19,6 +19,8 @@ from pytorch_lightning.utilities import rank_zero_info
 
 from ldm.data.base import Txt2ImgIterableBaseDataset
 from ldm.util import instantiate_from_config
+import wandb, json
+import hashlib
 
 
 def get_parser(**parser_kwargs):
@@ -258,23 +260,24 @@ class SetupCallback(Callback):
 
     def on_pretrain_routine_start(self, trainer, pl_module):
         if trainer.global_rank == 0:
-            # Create logdirs and save configs
-            os.makedirs(self.logdir, exist_ok=True)
-            os.makedirs(self.ckptdir, exist_ok=True)
-            os.makedirs(self.cfgdir, exist_ok=True)
+            if not self.resume: # Avoid storing configs if we are resuming, already there
+                # Create logdirs and save configs
+                os.makedirs(self.logdir, exist_ok=True)
+                os.makedirs(self.ckptdir, exist_ok=True)
+                os.makedirs(self.cfgdir, exist_ok=True)
 
-            if "callbacks" in self.lightning_config:
-                if 'metrics_over_trainsteps_checkpoint' in self.lightning_config['callbacks']:
-                    os.makedirs(os.path.join(self.ckptdir, 'trainstep_checkpoints'), exist_ok=True)
-            print("Project config")
-            print(OmegaConf.to_yaml(self.config))
-            OmegaConf.save(self.config,
-                           os.path.join(self.cfgdir, "{}-project.yaml".format(self.now)))
+                if "callbacks" in self.lightning_config:
+                    if 'metrics_over_trainsteps_checkpoint' in self.lightning_config['callbacks']:
+                        os.makedirs(os.path.join(self.ckptdir, 'trainstep_checkpoints'), exist_ok=True)
+                print("Project config")
+                print(OmegaConf.to_yaml(self.config))
+                OmegaConf.save(self.config,
+                            os.path.join(self.cfgdir, "{}-project.yaml".format(self.now)))
 
-            print("Lightning config")
-            print(OmegaConf.to_yaml(self.lightning_config))
-            OmegaConf.save(OmegaConf.create({"lightning": self.lightning_config}),
-                           os.path.join(self.cfgdir, "{}-lightning.yaml".format(self.now)))
+                print("Lightning config")
+                print(OmegaConf.to_yaml(self.lightning_config))
+                OmegaConf.save(OmegaConf.create({"lightning": self.lightning_config}),
+                            os.path.join(self.cfgdir, "{}-lightning.yaml".format(self.now)))
 
         else:
             # ModelCheckpoint callback created log directory --- remove it
@@ -286,7 +289,6 @@ class SetupCallback(Callback):
                     os.rename(self.logdir, dst)
                 except FileNotFoundError:
                     pass
-
 
 class ImageLogger(Callback):
     def __init__(self, batch_frequency, max_images, clamp=True, increase_log_steps=True,
@@ -393,7 +395,6 @@ class ImageLogger(Callback):
             if (pl_module.calibrate_grad_norm and batch_idx % 25 == 0) and batch_idx > 0:
                 self.log_gradients(trainer, pl_module, batch_idx=batch_idx)
 
-
 class CUDACallback(Callback):
     # see https://github.com/SeanNaren/minGPT/blob/master/mingpt/callback.py
     def on_train_epoch_start(self, trainer, pl_module):
@@ -418,54 +419,8 @@ class CUDACallback(Callback):
 
 
 if __name__ == "__main__":
-    # custom parser to specify config files, train, test and debug mode,
-    # postfix, resume.
-    # `--key value` arguments are interpreted as arguments to the trainer.
-    # `nested.key=value` arguments are interpreted as config parameters.
-    # configs are merged from left-to-right followed by command line parameters.
-
-    # model:
-    #   base_learning_rate: float
-    #   target: path to lightning module
-    #   params:
-    #       key: value
-    # data:
-    #   target: main.DataModuleFromConfig
-    #   params:
-    #      batch_size: int
-    #      wrap: bool
-    #      train:
-    #          target: path to train dataset
-    #          params:
-    #              key: value
-    #      validation:
-    #          target: path to validation dataset
-    #          params:
-    #              key: value
-    #      test:
-    #          target: path to test dataset
-    #          params:
-    #              key: value
-    # lightning: (optional, has sane defaults and can be specified on cmdline)
-    #   trainer:
-    #       additional arguments to trainer
-    #   logger:
-    #       logger to instantiate
-    #   modelcheckpoint:
-    #       modelcheckpoint to instantiate
-    #   callbacks:
-    #       callback1:
-    #           target: importpath
-    #           params:
-    #               key: value
-
     now = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-
-    # add cwd for convenience and to make classes in this file available when
-    # running as `python main.py`
-    # (in particular `main.DataModuleFromConfig`)
     sys.path.append(os.getcwd())
-
     parser = get_parser()
     parser = Trainer.add_argparse_args(parser)
 
@@ -477,12 +432,11 @@ if __name__ == "__main__":
             "use -n/--name in combination with --resume_from_checkpoint"
         )
     if opt.resume:
+        # Manage path resume not exist
         if not os.path.exists(opt.resume):
             raise ValueError("Cannot find {}".format(opt.resume))
         if os.path.isfile(opt.resume):
             paths = opt.resume.split("/")
-            # idx = len(paths)-paths[::-1].index("logs")+1
-            # logdir = "/".join(paths[:idx])
             logdir = "/".join(paths[:-2])
             ckpt = opt.resume
         else:
@@ -504,16 +458,25 @@ if __name__ == "__main__":
             name = "_" + cfg_name
         else:
             name = ""
+
+        configs = [OmegaConf.load(cfg) for cfg in opt.base]
         nowname = now + name + opt.postfix
         logdir = os.path.join(opt.logdir, nowname)
-
+    
     ckptdir = os.path.join(logdir, "checkpoints")
     cfgdir = os.path.join(logdir, "configs")
+
+    # Manage when does not specify resume but there is a checkpoint
+    if not opt.resume and os.path.exists(os.path.join(ckptdir, 'last.ckpt')):
+        opt.resume_from_checkpoint = os.path.join(ckptdir, 'last.ckpt')
+        opt.resume = True
+
+
     seed_everything(opt.seed)
 
     try:
         # init and save configs
-        configs = [OmegaConf.load(cfg) for cfg in opt.base]
+        configs = [OmegaConf.load(cfg) for cfg in opt.base] # TODO: Fix this because I read it before in case not resume
         cli = OmegaConf.from_dotlist(unknown)
         config = OmegaConf.merge(*configs, cli)
         lightning_config = config.pop("lightning", OmegaConf.create())
@@ -535,7 +498,6 @@ if __name__ == "__main__":
 
         # model
         model = instantiate_from_config(config.model)
-
         # trainer and callbacks
         trainer_kwargs = dict()
 
@@ -544,10 +506,10 @@ if __name__ == "__main__":
             "wandb": {
                 "target": "pytorch_lightning.loggers.WandbLogger",
                 "params": {
-                    "name": nowname,
-                    "save_dir": logdir,
+                    "project":opt.project,
+                    "save_dir": opt.logdir, # Set this to the "--logdir" dir, only trick to make wandb work
                     "offline": opt.debug,
-                    "id": nowname,
+                    "config": dict(config)
                 }
             },
             "testtube": {
@@ -580,7 +542,7 @@ if __name__ == "__main__":
         if hasattr(model, "monitor"):
             print(f"Monitoring {model.monitor} as checkpoint metric.")
             default_modelckpt_cfg["params"]["monitor"] = model.monitor
-            default_modelckpt_cfg["params"]["save_top_k"] = 3
+            default_modelckpt_cfg["params"]["save_top_k"] = 1
 
         if "modelcheckpoint" in lightning_config:
             modelckpt_cfg = lightning_config.modelcheckpoint
@@ -663,9 +625,6 @@ if __name__ == "__main__":
 
         # data
         data = instantiate_from_config(config.data)
-        # NOTE according to https://pytorch-lightning.readthedocs.io/en/latest/datamodules.html
-        # calling these ourselves should not be necessary but it is.
-        # lightning still takes care of proper multiprocessing though
         data.prepare_data()
         data.setup()
         print("#### Data #####")
@@ -698,11 +657,11 @@ if __name__ == "__main__":
         # allow checkpointing via USR1
         def melk(*args, **kwargs):
             # run all checkpoint hooks
-            if trainer.global_rank == 0:
-                print("Summoning checkpoint.")
-                ckpt_path = os.path.join(ckptdir, "last.ckpt")
-                trainer.save_checkpoint(ckpt_path)
-
+            if not opt.resume:
+                if trainer.global_rank == 0:
+                    print("Summoning checkpoint.")
+                    ckpt_path = os.path.join(ckptdir, "last.ckpt")
+                    trainer.save_checkpoint(ckpt_path)
 
         def divein(*args, **kwargs):
             if trainer.global_rank == 0:
@@ -711,7 +670,7 @@ if __name__ == "__main__":
 
 
         import signal
-        
+
         signal.signal(signal.SIGUSR1, melk)
         signal.signal(signal.SIGUSR2, divein)
 

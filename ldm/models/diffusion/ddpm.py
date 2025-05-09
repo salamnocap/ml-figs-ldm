@@ -17,14 +17,17 @@ from functools import partial
 from tqdm import tqdm
 from torchvision.utils import make_grid
 from pytorch_lightning.utilities.distributed import rank_zero_only
+from PIL import Image
 
 from ldm.util import log_txt_as_img, exists, default, ismap, isimage, mean_flat, count_params, instantiate_from_config
 from ldm.modules.ema import LitEma
 from ldm.modules.distributions.distributions import normal_kl, DiagonalGaussianDistribution
-from ldm.models.autoencoder import VQModelInterface, IdentityFirstStage, AutoencoderKL
+from ldm.models.autoencoder import VQModelInterface, IdentityFirstStage, AutoencoderKLCustom
 from ldm.modules.diffusionmodules.util import make_beta_schedule, extract_into_tensor, noise_like
 from ldm.models.diffusion.ddim import DDIMSampler
+import os
 
+os.environ['TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD'] = '1'
 
 __conditioning_keys__ = {'concat': 'c_concat',
                          'crossattn': 'c_crossattn',
@@ -71,6 +74,7 @@ class DDPM(pl.LightningModule):
                  use_positional_encodings=False,
                  learn_logvar=False,
                  logvar_init=0.,
+                 fourier=False,
                  ):
         super().__init__()
         assert parameterization in ["eps", "x0"], 'currently only supporting "eps" and "x0"'
@@ -86,6 +90,7 @@ class DDPM(pl.LightningModule):
         self.model = DiffusionWrapper(unet_config, conditioning_key)
         count_params(self.model, verbose=True)
         self.use_ema = use_ema
+        self.fourier = fourier
         if self.use_ema:
             self.model_ema = LitEma(self.model)
             print(f"Keeping EMAs of {len(list(self.model_ema.buffers()))}.")
@@ -184,7 +189,7 @@ class DDPM(pl.LightningModule):
                     print(f"{context}: Restored training weights")
 
     def init_from_ckpt(self, path, ignore_keys=list(), only_model=False):
-        sd = torch.load(path, map_location="cpu")
+        sd = torch.load(path, map_location="CPU", weights_only=True)
         if "state_dict" in list(sd.keys()):
             sd = sd["state_dict"]
         keys = list(sd.keys())
@@ -334,6 +339,10 @@ class DDPM(pl.LightningModule):
         x = x.to(memory_format=torch.contiguous_format).float()
         return x
 
+    def get_text_input(self, batch, k):
+        x = [bb[k] for bb in batch]
+        return x
+
     def shared_step(self, batch):
         x = self.get_input(batch, self.first_stage_key)
         loss, loss_dict = self(x)
@@ -352,7 +361,33 @@ class DDPM(pl.LightningModule):
             lr = self.optimizers().param_groups[0]['lr']
             self.log('lr_abs', lr, prog_bar=True, logger=True, on_step=True, on_epoch=False)
 
-        return loss
+        return loss 
+
+    def test_step(self, batch, batch_idx):
+        texts = self.get_text_input(batch, "caption")
+        res = self.log_images(batch, sample=True, ddim_steps=200, inpaint=False, plot_denoise_rows=False, plot_progressive_rows=False,
+                   plot_diffusion_rows=False)
+        
+        images_to_store = ['inputs', 'samples', 'samples_x0_quantized']
+        for ttt in images_to_store:
+            im_ttt = res[ttt].detach().cpu()
+            im_ttt = torch.clamp(im_ttt, -1., 1.) 
+            im_ttt = (im_ttt+1.0)/2.0
+            im_ttt = im_ttt.transpose(1, 2).transpose(2, 3)
+            im_ttt = im_ttt.numpy()
+            im_ttt = (im_ttt*255).astype(np.uint8)
+            for k in range(im_ttt.shape[0]):
+                
+                filename = f"{ttt}_batch_{batch_idx}_id_{k}.png"
+                path = os.path.join(self.trainer.log_dir, 'evaluation', ttt, filename)
+                im = im_ttt[k]
+                im_store = Image.fromarray(im)
+                im_store.save(path)
+
+                if ttt == 'inputs':
+                    with open(os.path.join(self.trainer.log_dir, 'evaluation', 'captions', f'{filename}.txt'), 'w') as f:
+                        f.write(texts[k])
+
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
@@ -650,9 +685,19 @@ class LatentDiffusion(DDPM):
 
         return fold, unfold, normalization, weighting
 
-    def get_text_input(self, batch, k):
-        x = [bb[k] for bb in batch]
-        return x
+    def fourier_features(self, inputs):
+        start = 0
+        stop = 8
+        step = 1
+
+        f = range(start, stop, step)
+        w = 2.**(np.asarray(f))*2*np.pi
+        w = torch.tile(torch.tensor(w[None, :]), (1, inputs.shape[1])).cuda()
+        
+        h = torch.repeat_interleave(inputs, len(f), dim=1).transpose(1, 2).transpose(2, 3)
+        h = w * h
+        h = h.transpose(2, 3).transpose(1, 2)
+        return torch.cat([torch.sin(h), torch.cos(h)], axis=1)
 
     @torch.no_grad()
     def get_input(self, batch, k, return_first_stage_outputs=False, force_c_encode=False,
@@ -664,6 +709,9 @@ class LatentDiffusion(DDPM):
         encoder_posterior = self.encode_first_stage(x)
         z = self.get_first_stage_encoding(encoder_posterior).detach()
 
+        # if self.fourier:
+        #     z_f = self.fourier_features(z)
+        #     z = torch.cat([z, z_f], axis=1)
         if self.model.conditioning_key is not None:
             if cond_key is None:
                 cond_key = self.cond_stage_key
@@ -872,7 +920,7 @@ class LatentDiffusion(DDPM):
         return loss
 
     def forward(self, x, c, *args, **kwargs):
-        t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long()
+        t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long() # a random timestep for a fw pass
         if self.model.conditioning_key is not None:
             assert c is not None
             if self.cond_stage_trainable:
@@ -880,6 +928,7 @@ class LatentDiffusion(DDPM):
             if self.shorten_cond_schedule:  # TODO: drop this option
                 tc = self.cond_ids[t].to(self.device)
                 c = self.q_sample(x_start=c, t=tc, noise=torch.randn_like(c.float()))
+        
         return self.p_losses(x, c, t, *args, **kwargs)
 
     def _rescale_annotations(self, bboxes, crop_coordinates):  # TODO: move to dataset
@@ -988,6 +1037,9 @@ class LatentDiffusion(DDPM):
             x_recon = fold(o) / normalization
 
         else:
+            if self.fourier:
+                z_f = self.fourier_features(x_noisy).float()
+                x_noisy = torch.cat([x_noisy, z_f], axis=1)
             x_recon = self.model(x_noisy, t, **cond)
 
         if isinstance(x_recon, tuple) and not return_ids:
@@ -1014,7 +1066,7 @@ class LatentDiffusion(DDPM):
         return mean_flat(kl_prior) / np.log(2.0)
 
     def p_losses(self, x_start, cond, t, noise=None):
-        noise = default(noise, lambda: torch.randn_like(x_start))
+        noise = default(noise, lambda: torch.randn_like(x_start)) # Noise realization
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
         model_output = self.apply_model(x_noisy, t, cond)
 
@@ -1031,7 +1083,7 @@ class LatentDiffusion(DDPM):
         loss_simple = self.get_loss(model_output, target, mean=False).mean([1, 2, 3])
         loss_dict.update({f'{prefix}/loss_simple': loss_simple.mean()})
 
-        logvar_t = self.logvar[t].to(self.device)
+        logvar_t = self.logvar.to(self.device)[t]
         loss = loss_simple / torch.exp(logvar_t) + logvar_t
         # loss = loss_simple / torch.exp(self.logvar) + self.logvar
         if self.learn_logvar:
@@ -1252,9 +1304,9 @@ class LatentDiffusion(DDPM):
 
 
     @torch.no_grad()
-    def log_images(self, batch, N=8, n_row=4, sample=True, ddim_steps=200, ddim_eta=1., return_keys=None,
-                   quantize_denoised=True, inpaint=True, plot_denoise_rows=False, plot_progressive_rows=True,
-                   plot_diffusion_rows=True, **kwargs):
+    def log_images(self, batch, N=1, n_row=1, sample=True, ddim_steps=200, ddim_eta=1., return_keys=None,
+                   quantize_denoised=False, inpaint=False, plot_denoise_rows=False, plot_progressive_rows=False,
+                   plot_diffusion_rows=False, **kwargs):
 
         use_ddim = ddim_steps is not None
 
@@ -1313,7 +1365,7 @@ class LatentDiffusion(DDPM):
                 denoise_grid = self._get_denoise_row_from_list(z_denoise_row)
                 log["denoise_row"] = denoise_grid
 
-            if quantize_denoised and not isinstance(self.first_stage_model, AutoencoderKL) and not isinstance(
+            if quantize_denoised and not isinstance(self.first_stage_model, AutoencoderKLCustom) and not isinstance(
                     self.first_stage_model, IdentityFirstStage):
                 # also display when quantizing x0 while sampling
                 with self.ema_scope("Plotting Quantized Denoised"):

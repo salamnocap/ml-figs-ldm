@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import albumentations as A
 
+from random import randint
 from pytesseract import Output
 from torchvision import transforms
 from string import punctuation
@@ -69,15 +70,17 @@ def visualize_ocr(
 class MlFigs(Dataset):
     def __init__(
         self, 
-        json_file: str, size: int = 224, transform=None, 
-        random_crop=False, square_pad=False, use_roi_bboxes=False
+        json_file: str, size: int = 224, transform: transforms.Compose = transforms.ToTensor(),
+        random_crop: bool = False, square_pad: bool = False, use_roi_bboxes: bool = False,
+        text_modality: int = 1
     ):
-        self.json_file = json_file 
+        self.json_file = json_file
         self.size = size
         self.transform = transform
         self.random_crop = random_crop
         self.square_pad = square_pad
         self.use_roi_bboxes = use_roi_bboxes
+        self.text_modality = text_modality
         self.data = self._load_data()
         
         if self.square_pad:
@@ -86,11 +89,11 @@ class MlFigs(Dataset):
                 A.PadIfNeeded(
                     min_width=self.size, 
                     min_height=self.size, 
-                    border_mode=cv2.BORDER_CONSTANT, 
+                    border_mode=cv2.BORDER_CONSTANT,
                     value = [255, 255, 255]
                 )
             ], bbox_params=A.BboxParams(
-                format='coco', min_visibility=0.1, label_fields = ['category_ids'], clip=True
+                format='coco', min_visibility=0.1, label_fields = ['category_ids']
             ))
         else:
             self.image_rescaler = A.SmallestMaxSize(
@@ -106,7 +109,7 @@ class MlFigs(Dataset):
                     self.image_rescaler,
                     self.cropper
                 ], bbox_params=A.BboxParams(
-                    format='coco', min_visibility=0.1, label_fields = ['category_ids'], clip=True
+                    format='coco', min_visibility=0.1, label_fields = ['category_ids']
                 ))
 
     def _load_data(self):
@@ -116,6 +119,19 @@ class MlFigs(Dataset):
 
     def __len__(self):
         return len(self.data)
+
+    def random_sample(self):
+        return self.__getitem__(randint(0, self.__len__() - 1))
+
+    def sequential_sample(self, ind):
+        if ind >= self.__len__() - 1:
+            return self.__getitem__(0)
+        return self.__getitem__(ind + 1)
+
+    def skip_sample(self, ind):
+        if self.shuffle:
+            return self.random_sample()
+        return self.sequential_sample(ind=ind)
 
     def _preprocessing(self, text: str) -> str:
         text = text.lower()
@@ -161,67 +177,56 @@ class MlFigs(Dataset):
         
         return result
 
-    def _get_bboxes_tensor(self, ocr: dict):
+    @staticmethod
+    def _get_bboxes_tensor(ocr: dict):
         return [
             [l, t, w, h] 
             for l, t, w, h in zip(ocr['left'], ocr['top'], ocr['width'], ocr['height'])
         ]
 
-    def sequential_sample(self, idx):
-        if idx >= self.__len__() - 1:
-            return self.__getitem__(0)
-        return self.__getitem__(idx + 1)
-
-    def skip_sample(self, idx):
-        if self.shuffle:
-            return self.random_sample()
-        return self.sequential_sample(idx=idx)
+    def get_text(self, ocr_text: list[str], figure_type: str, caption: str) -> str:
+        text = caption
+        if self.text_modality == 1:
+            return text + " " + figure_type
+        if self.text_modality == 2:
+            return text + " " + figure_type + " ".join(ocr_text)
+        return text
 
     def __getitem__(self, idx):
         sample = {}
         figure_metadata = self.data[idx]
-
-        image_path = str(
-            Path(self.json_file).parent.parent / figure_metadata['renderURL']
-        )
-        
-        if 'ocr' in figure_metadata:
-            ocr_data = figure_metadata['ocr']
-        else:
-            ocr_data = self._get_ocr_results(image_path)
-
-        if self.use_roi_bboxes:
-            bboxes = self._get_bboxes_tensor(ocr_data)
-            ids = [1 for i in range(len(bboxes))]
+        ocr_data = figure_metadata['ocr']
+        image_path = Path(self.json_file).parent.parent / figure_metadata['renderURL']
 
         try:
-            image = Image.open(image_path)
-            if not image.mode == 'RGB':
-                image = image.convert('RGB')
+            image = Image.open(image_path).convert('RGB')
             image = np.array(image).astype(np.uint8)
 
             if self.square_pad:
+                bboxes, ids = [], []
+                if self.use_roi_bboxes:
+                    bboxes = self._get_bboxes_tensor(ocr_data)
+                    ids = [1 for i in range(len(bboxes))]
                 tr_im = self.square_pad_transform(
-                    image=image, 
-                    bboxes=bboxes if self.use_roi_bboxes else [], 
-                    category_ids = ids if self.use_roi_bboxes else []
+                    image=image, bboxes=bboxes, category_ids=ids,
                 )
-                image = tr_im['image']
-                sample['bboxes'] = tr_im['bboxes']
+                image, sample['bboxes'] = tr_im['image'], tr_im['bboxes']
             else:
                 image = self.image_rescaler(image=image)['image']
                 image = self.cropper(image=image)['image']
 
-            if self.transform:
-                image = self.transform(Image.fromarray(image))
-            
+            sample['image'] = self.transform(image) if self.transform else image
+
         except (PIL.UnidentifiedImageError, OSError) as corrupt_image_exceptions:
             print(f"An exception occurred trying to load file {image_path}.")
             print(f"Skipping index {idx}")
             return self.skip_sample(idx)
 
-        sample['image'] = image
-        sample['caption'] = figure_metadata.get('caption', '')
+        sample['caption'] = self.get_text(
+            ocr_data['text'],
+            figure_metadata.get('figure_type', ''),
+            figure_metadata['caption']
+        )
 
         return sample
     

@@ -7,16 +7,21 @@ from PIL import Image
 from tqdm import tqdm, trange
 from einops import rearrange
 from torchvision.utils import make_grid
-from torch import autocast
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
 
+from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
+
+torch.serialization.add_safe_globals([ModelCheckpoint])
+
 def load_model_from_config(config, ckpt, verbose=False):
     print(f"Loading model from {ckpt}")
-    pl_sd = torch.load(ckpt, map_location="cpu")
+    pl_sd = torch.load(ckpt, map_location="cpu", weights_only=False)
     sd = pl_sd["state_dict"]
     model = instantiate_from_config(config.model)
     m, u = model.load_state_dict(sd, strict=False)
@@ -46,7 +51,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ddim_steps",
         type=int,
-        default=200,
+        default=70,
         help="number of ddim sampling steps",
     )
 
@@ -86,19 +91,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n_samples",
         type=int,
-        default=16,
+        default=1,
         help="how many samples to produce for the given prompt",
     )
 
     parser.add_argument(
         "--scale",
         type=float,
-        default=5.0,
+        default=3.0,
         help="unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))",
     )
     opt = parser.parse_args()
-
-    # Compute ckpt path and config path
 
     # if file has extension ckpt
     if os.path.isfile(opt.ckpt):
@@ -110,8 +113,8 @@ if __name__ == "__main__":
         # error
         raise ValueError("Invalid ckpt path")
 
-    config = OmegaConf.load(config_path)  # TODO: Optionally download from same location as ckpt and chnage this logic
-    model = load_model_from_config(config, ckpt_path)  # TODO: check path
+    config = OmegaConf.load(config_path)
+    model = load_model_from_config(config, ckpt_path)
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)
