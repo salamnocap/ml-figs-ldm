@@ -66,3 +66,6 @@ Model A trained on ML-Figs, Model B trained on ML-Figs + SciCap. TPL: Text Perce
 <p align="center">
 <img src=assets/generated_samples.png />
 </p>
+
+## Download Models:
+Autoencoder and LDM models are available for download at [https://huggingface.co/salamnocap/ml-figs-ldm](https://huggingface.co/salamnocap/ml-figs-ldm). The models are trained on the ML-Figs\+SciCap dataset.

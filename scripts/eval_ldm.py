@@ -45,7 +45,7 @@ if __name__ == "__main__":
         type=str,
         nargs="?",
         help="Checkpoint path (file path)",
-        default="/mnt/colab_public/datasets/joan/LatentDiffusion/models/ldm/9f89f99b16ed220aacff46ea08450e48_paper2fig-snowBert-kl-f8-8layers/checkpoints/epoch=000299.ckpt"
+        default="/checkpoints/mlfigs_ldm.ckpt",
     )
 
     parser.add_argument(

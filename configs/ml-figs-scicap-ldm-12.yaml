@@ -46,7 +46,7 @@ model:
       target: ldm.models.autoencoder.AutoencoderKL
       params:
         embed_dim: 4
-        ckpt_path: /workspace/ml-figs-ldm/models/AutoencoderKL(14-02-2024)_epoch_11_dataset_MlFigsSciCap.ckpt
+        ckpt_path: /checkpoints/AutoencoderKL_MlFigsSciCap.ckpt
         ddconfig:
           double_z: true
           z_channels: 4
@@ -79,7 +79,7 @@ data:
     train:
       target: ldm.data.ml_figs.MlFigsTrain
       params:
-        json_file: /workspace/ml-figs-ldm/dataset/ml-scicap-figs/train.json
+        json_file: dataset/ml-scicap-figs/train.json
         size: 512
         text_modality: 1
         random_crop: false
@@ -88,7 +88,7 @@ data:
     validation:
       target: ldm.data.ml_figs.MlFigsValidation
       params:
-        json_file: /workspace/ml-figs-ldm/dataset/ml-scicap-figs/test.json
+        json_file: dataset/ml-scicap-figs/test.json
         size: 512
         text_modality: 1
         random_crop: false
@@ -97,7 +97,7 @@ data:
     test:
       target: ldm.data.ml_figs.MlFigsValidation
       params:
-        json_file: /workspace/ml-figs-ldm/dataset/ml-scicap-figs/test.json
+        json_file: dataset/ml-scicap-figs/test.json
         size: 512
         text_modality: 1
         random_crop: false

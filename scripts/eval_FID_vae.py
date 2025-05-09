@@ -74,7 +74,7 @@ if __name__ == "__main__":
             "target": "torch.nn.Identity",
         },
         embed_dim=4,
-        ckpt_path="checkpoints/AutoencoderKL(04-12-2024)_epoch_20_dataset_MlFigs.ckpt",
+        ckpt_path="checkpoints/AutoencoderKL_MlFigsSciCap.ckpt",
     ).eval().to(device)
 
     # vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae").eval().to(device)
@@ -84,26 +84,9 @@ if __name__ == "__main__":
         transforms.ToTensor()
     ])
 
-    # test_dataset = MlFigsValidation(
-    #     json_file="ml-figs/mlfigs_test.json",
-    #     # json_file="ml-scicap-figs/test.json",
-    #     size=512,
-    #     text_modality=0,
-    #     random_crop=False,
-    #     square_pad=True,
-    #     use_roi_bboxes=True,
-    #     transform=transform
-    # )
-    # test_dataloader = DataLoader(
-    #     dataset=test_dataset, batch_size=15, num_workers=1, collate_fn=lambda x: x, shuffle=False
-    # )
-
-    # Save samples
-    # save_samples(test_dataloader, vae, False, output_dir="outputs_sd_(MlFigs)")
-
     test_dataset = MlFigsValidation(
-        # json_file="ml-figs/mlfigs_test.json",
-        json_file="ml-scicap-figs/test.json",
+        # json_file="dataset/ml-figs/mlfigs_test.json",
+        json_file="dataset/ml-scicap-figs/test.json",
         size=512,
         text_modality=0,
         random_crop=False,

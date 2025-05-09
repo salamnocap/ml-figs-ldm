@@ -106,8 +106,8 @@ if __name__ == "__main__":
     opt = parser.parse_args()
 
 
-    config = OmegaConf.load("configs/ml-figs-scicap-ldm-new.yaml")  # TODO: Optionally download from same location as ckpt and chnage this logic
-    model = load_model_from_config(config, "logs/2025-04-03T12-44-09_ml-figs-scicap-ldm-new/checkpoints/last.ckpt")  # TODO: check path
+    config = OmegaConf.load("configs/ml-figs-scicap-ldm-new.yaml")
+    model = load_model_from_config(config, "/checkpoints/mlfigs_ldm.ckpt")
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)

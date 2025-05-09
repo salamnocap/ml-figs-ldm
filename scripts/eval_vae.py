@@ -99,7 +99,7 @@ if __name__ == "__main__":
             "target": "torch.nn.Identity",
         },
         embed_dim=4,
-        ckpt_path="/teamspace/studios/this_studio/checkpoints/AutoencoderKL(14-02-2024)_epoch_11_dataset_MlFigsSciCap.ckpt"
+        ckpt_path="/checkpoints/AutoencoderKL_MlFigsSciCap.ckpt"
     ).eval().to(device)
     # vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae").eval().to(device)
 
@@ -114,7 +114,7 @@ if __name__ == "__main__":
 
     test_dataset = MlFigsValidation(
         # json_file="ml-figs/mlfigs_test.json",
-        json_file="ml-scicap-figs/test.json",
+        json_file="dataset/ml-scicap-figs/test.json",
         size=512,
         text_modality=0,
         random_crop=False,
